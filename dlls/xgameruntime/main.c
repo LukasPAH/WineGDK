@@ -110,7 +110,6 @@ BOOL WINAPI DllMain( HINSTANCE hinst, DWORD reason, void *reserved )
     {
         case DLL_PROCESS_ATTACH:
             DisableThreadLibraryCalls(hinst);
-            xgameruntime_threading = LoadLibraryA("xgameruntime.dll.threading");
             break;
         case DLL_PROCESS_DETACH:
             if (reserved) break;
@@ -123,6 +122,57 @@ BOOL WINAPI DllMain( HINSTANCE hinst, DWORD reason, void *reserved )
 
 typedef HRESULT (WINAPI *InitializeApiImplEx2_ext)( ULONG gdkVer, ULONG gsVer, CHAR mode, INITIALIZE_OPTIONS *options );
 
+void OnRemoteConnectShow(void* context, uint32_t userIdentifier, XUserPlatformOperation operation, char const* url, char const* code, size_t qrCodeSize, void const* qrCode) {
+    char output_string[256] = "{ ";
+    FILE *file;
+    (void)context;
+
+    file = fopen("../login.json", "w");
+
+    FIXME("OnRemoteConnectShow %u %p %s %s\n", userIdentifier, operation, url, code);
+
+    if ( file == NULL ) {
+        TRACE("Error writing login file");
+    }
+
+    strcat(output_string, "\"verification_uri\": \"");
+    strcat(output_string, url);
+    strcat(output_string, "\", \"user_code\": \"");
+    strcat(output_string, code);
+    strcat(output_string, "\" }");
+
+    fprintf(file, output_string);
+    fclose(file);
+}
+
+void OnRemoteConnectClose( void* context, uint32_t userIdentifier, XUserPlatformOperation operation ) {
+    (void)context;
+    FIXME("OnRemoteConnectClose %u %p\n", userIdentifier, operation);
+    fflush(stdout);
+}
+
+BOOL CALLBACK SetUpXgameruntimeCrossPlatformMode(PINIT_ONCE, PVOID, PVOID *) {
+    XUserPlatformRemoteConnectEventHandlers remoteConnect;
+    IXUserPlatform *user;
+    InitializeApiImplEx2_ext func;
+
+    xgameruntime_threading = LoadLibraryA("xgameruntime.dll.threading");
+    func = (InitializeApiImplEx2_ext)GetProcAddress( xgameruntime_threading, "InitializeApiImplEx2" );
+    
+    if ( func ) {
+        HRESULT hr = func(10002, 7822, 0x8 /* CrossPlatformMode */ | 0x2 /* Default */, 0);
+        if(hr != S_OK) {
+            return TRUE;
+        }
+        QueryApiImpl(&CLSID_XUserImpl, &IID_IXUserPlatform, (void *)&user);
+        remoteConnect.context = NULL;
+        remoteConnect.show = (void *)&OnRemoteConnectShow;     // Display QR code/URL dialog
+        remoteConnect.close = (void *)&OnRemoteConnectClose;   // Close authentication dialog
+        IXUserImpl_XUserPlatformRemoteConnectSetEventHandlers((void *)user, NULL, &remoteConnect);
+    }
+    return TRUE;
+}
+
 HRESULT WINAPI InitializeApiImplEx2( ULONG gdkVer, ULONG gsVer, CHAR mode, INITIALIZE_OPTIONS *options )
 {
     //  Initialization can be done however we want on our side.
@@ -130,7 +180,9 @@ HRESULT WINAPI InitializeApiImplEx2( ULONG gdkVer, ULONG gsVer, CHAR mode, INITI
     //
     //  There's no documented information about what `INITIALIZE_OPTIONS` is,
     // and xgameruntime.lib never utilizes this argument anyway.
+    static INIT_ONCE once = INIT_ONCE_STATIC_INIT;
     TRACE("gdkVer %ld, gsVer %ld, mode %d, options %p stub!\n", gdkVer, gsVer, mode, options);
+    InitOnceExecuteOnce(&once, &SetUpXgameruntimeCrossPlatformMode, NULL, NULL);
     return GDKC_InitAPI( gdkVer, gsVer, mode, options );
 }
 
@@ -178,7 +230,7 @@ HRESULT WINAPI QueryApiImpl( const GUID *runtimeClassId, REFIID interfaceId, voi
 
     TRACE("runtimeClassId %s, interfaceId %s, out %p\n", debugstr_guid(runtimeClassId), debugstr_guid(interfaceId), out);
 
-    if ( IsEqualGUID( runtimeClassId, &CLSID_XSystemImpl ) )
+    if ( !func && IsEqualGUID( runtimeClassId, &CLSID_XSystemImpl ) )
     {
         return IXSystemImpl_QueryInterface( x_system_impl, interfaceId, out );
     }
@@ -186,9 +238,17 @@ HRESULT WINAPI QueryApiImpl( const GUID *runtimeClassId, REFIID interfaceId, voi
     {
         return IXGameRuntimeFeatureImpl_QueryInterface( x_game_runtime_feature_impl, interfaceId, out );
     }
-    else if ( IsEqualGUID( runtimeClassId, &CLSID_XSystemAnalyticsImpl ) )
+    else if ( !func && IsEqualGUID( runtimeClassId, &CLSID_XSystemAnalyticsImpl ) )
     {
         return IXSystemAnalyticsImpl_QueryInterface( x_system_analytics_impl, interfaceId, out );
+    }
+    else if ( IsEqualGUID( runtimeClassId, &CLSID_XGameProtocolImpl ) )
+    {
+        return IXGameProtocolImpl_QueryInterface( x_gameprotocol_impl, interfaceId, out );
+    }
+    else if ( IsEqualGUID( runtimeClassId, &CLSID_XGameSaveImpl ) )
+    {
+        return IXGameSave_QueryInterface( x_game_save_impl, interfaceId, out );
     }
     else if ( IsEqualGUID( runtimeClassId, &CLSID_XThreadingImpl ) )
     {
@@ -204,11 +264,15 @@ HRESULT WINAPI QueryApiImpl( const GUID *runtimeClassId, REFIID interfaceId, voi
             }
             return IXThreadingImpl_QueryInterface( x_threading_impl, interfaceId, out );
         }
-        return func( runtimeClassId, interfaceId, out );
+        return func( (GUID *)runtimeClassId, interfaceId, out );
     }
     else if ( IsEqualGUID( runtimeClassId, &CLSID_XNetworkingImpl ) )
     {
         return IXNetworkingImpl_QueryInterface( x_networking_impl, interfaceId, out );
+    }
+    else if( func && func( (GUID *)runtimeClassId, interfaceId, out ) == S_OK )
+    {
+        return S_OK;
     }
     
     FIXME( "%s not implemented, returning E_NOINTERFACE.\n", debugstr_guid( runtimeClassId ) );
