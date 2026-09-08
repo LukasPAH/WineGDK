@@ -44,9 +44,9 @@
 #define WIDL_using_Windows_System_Profile
 #include "windows.system.profile.h"
 
-// October 2025 Release of GDK
+// April 2026 Release of GDK
 #define GDKC_VERSION 10002L
-#define GAMING_SERVICES_VERSION 4429L
+#define GAMING_SERVICES_VERSION 7849L
 
 extern IXSystemImpl *x_system_impl;
 extern IXSystemAnalyticsImpl *x_system_analytics_impl;
@@ -62,7 +62,7 @@ typedef struct _INITIALIZE_OPTIONS
 } INITIALIZE_OPTIONS;
 
 // Deference is for other modules to communicate with eachother through the same binary.
-HRESULT WINAPI QueryApiImpl( const GUID *runtimeClassId, REFIID interfaceId, void **out );
+HRESULT WINAPI QueryApiImpl(const GUID *runtimeClassId, REFIID interfaceId, void **out);
 
 // a85c3901-18ae-48c9-b066-d368f4523420
 DEFINE_GUID(IID_IXTaskQueue, 0xa85c3901, 0x18ae, 0x48c9, 0xb0, 0x66, 0xd3, 0x68, 0xf4, 0x52, 0x34, 0x20);
