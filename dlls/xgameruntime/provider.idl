@@ -31,6 +31,28 @@ typedef void* XSystemHandle;
 typedef enum XSystemHandleType XSystemHandleType;
 typedef enum XSystemHandleCallbackReason XSystemHandleCallbackReason;
 typedef enum XGameRuntimeFeature XGameRuntimeFeature;
+typedef enum XGameActivationType
+{
+    XGameActivationType_Protocol,
+    XGameActivationType_File,
+    XGameActivationType_PendingGameInvite,
+    XGameActivationType_AcceptedGameInvite,
+} XGameActivationType;
+
+typedef struct XGameActivationInfo XGameActivationInfo;
+
+typedef void __stdcall XGameActivationCallback( void *context, const XGameActivationInfo *activationInfo );
+
+struct XGameActivationInfo
+{
+    XGameActivationType type;
+    union
+    {
+        const char *protocolUri;
+        const char *file;
+        const char *inviteUri;
+    };
+};
 
 typedef struct XVersion XVersion;
 typedef struct XSystemAnalyticsInfo XSystemAnalyticsInfo;
@@ -364,6 +386,17 @@ interface IXGameProtocolImpl : IUnknown
     BOOLEAN XGameProtocolUnregisterForActivation( XTaskQueueRegistrationToken *token, boolean wait );
     void XGameProtocolActivationCallback( [in] void *context, [in] LPSTR protocolUri );
 }
+[
+    local,
+    object,
+    uuid(2e4f76fe-0fc7-461e-ab4d-a4499434c3cf)
+]
+interface IXGameActivationImpl : IUnknown
+{
+    HRESULT XGameActivationRegisterForEvent( [in, optional] XTaskQueueHandle queue, [in, optional] void *context, [in] XGameActivationCallback *callback, [out] XTaskQueueRegistrationToken *token );
+    BOOLEAN XGameActivationUnregisterForEvent( [in] XTaskQueueRegistrationToken token, [in] BOOLEAN wait );
+    HRESULT XGameActivationAcceptPendingInvite( [in, string] const char *inviteUri );
+}
 
 [
     uuid(e349bd1a-fc20-4e40-b99c-4178cc6b409f)
@@ -414,3 +447,10 @@ coclass XGameSaveImpl
     [default] interface IXGameSave;
 }
 
+[
+    uuid(7f0fe8b8-e075-49ab-9aa7-a1e065489a9e)
+]
+coclass XGameActivationImpl
+{
+    [default] interface IXGameActivationImpl;
+}

@@ -246,6 +246,10 @@ HRESULT WINAPI QueryApiImpl( const GUID *runtimeClassId, REFIID interfaceId, voi
     {
         return IXGameProtocolImpl_QueryInterface( x_gameprotocol_impl, interfaceId, out );
     }
+    else if ( IsEqualGUID( runtimeClassId, &CLSID_XGameActivationImpl ) )
+    {
+        return IXGameActivationImpl_QueryInterface( x_game_activation_impl, interfaceId, out );
+    }
     else if ( IsEqualGUID( runtimeClassId, &CLSID_XGameSaveImpl ) )
     {
         return IXGameSave_QueryInterface( x_game_save_impl, interfaceId, out );
