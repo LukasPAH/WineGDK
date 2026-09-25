@@ -26,8 +26,8 @@ WINE_DEFAULT_DEBUG_CHANNEL(gdkc);
 static BOOLEAN WINAPI GDKCIgnoreVersionMismatch( void )
 {
     LSTATUS result;
-    DWORD valueSize;
-    INT32 value;
+    INT32 value = 0;
+    DWORD valueSize = sizeof( value );
 
     result = RegGetValueW( HKEY_LOCAL_MACHINE,
                            L"Software\\Microsoft\\GamingServices",
@@ -37,11 +37,7 @@ static BOOLEAN WINAPI GDKCIgnoreVersionMismatch( void )
                            &value,
                            &valueSize );
     
-    if ( FAILED( result ) ) return FALSE;
-    if ( value == 0 )
-        return FALSE;
-    else
-        return TRUE;
+    return result == ERROR_SUCCESS && value != 0;
 }
 
 HRESULT WINAPI GDKC_InitAPI( 

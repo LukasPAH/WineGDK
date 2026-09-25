@@ -42,9 +42,9 @@
 #define WIDL_using_Windows_System_Profile
 #include "windows.system.profile.h"
 
-// April 2025 Release of GDK
-#define GDKC_VERSION 10001L
-#define GAMING_SERVICES_VERSION 3181L
+// October 2025 Release of GDK
+#define GDKC_VERSION 10002L
+#define GAMING_SERVICES_VERSION 4429L
 
 static HMODULE xgameruntime = NULL;
 
@@ -128,10 +128,14 @@ static inline HRESULT CALLBACK XAsyncProvider_testCallback( XAsyncOp op, const X
 
 static void test_GDKComponentInit(void)
 {
+    static const WCHAR gaming_services_key[] = L"Software\\Microsoft\\GamingServices";
+    static const WCHAR ignore_mismatch[] = L"IgnoreVersionMismatch";
     HRESULT hr;
-    LPCSTR xgameruntime_libname = "xgameruntime.dll";
+    HKEY key;
+    DWORD disposition, type, value;
+    LSTATUS result;
 
-    xgameruntime = LoadLibraryA( xgameruntime_libname );
+    xgameruntime = LoadLibraryA( "xgameruntime.dll" );
     ok( xgameruntime != NULL, "xgameruntime.dll failed to load! error code: %lu\n", GetLastError() );
 
     InitializeApiImpl_fun = (InitializeApiImpl)GetProcAddress( xgameruntime, "InitializeApiImpl" );
@@ -139,6 +143,52 @@ static void test_GDKComponentInit(void)
 
     hr = InitializeApiImpl_fun( GDKC_VERSION, GAMING_SERVICES_VERSION );
     ok( hr == S_OK, "got hr %#lx.\n", hr );
+
+    result = RegCreateKeyExW( HKEY_LOCAL_MACHINE, gaming_services_key, 0, NULL, 0,
+                              KEY_QUERY_VALUE | KEY_SET_VALUE, NULL, &key, &disposition );
+    if ( result == ERROR_ACCESS_DENIED )
+        win_skip( "insufficient rights to test the Gaming Services override\n" );
+    else
+    {
+        ok( result == ERROR_SUCCESS, "failed to open Gaming Services key, got %ld\n", result );
+        if ( result == ERROR_SUCCESS )
+        {
+            type = 0;
+            result = RegQueryValueExW( key, ignore_mismatch, NULL, &type, NULL, NULL );
+            if ( result == ERROR_SUCCESS )
+                skip( "IgnoreVersionMismatch already exists, not replacing it\n" );
+            else
+            {
+                ok( result == ERROR_FILE_NOT_FOUND, "got unexpected query result %ld\n", result );
+
+                hr = InitializeApiImpl_fun( GDKC_VERSION, GAMING_SERVICES_VERSION + 1 );
+                ok( hr == E_GAMERUNTIME_VERSION_MISMATCH, "got hr %#lx.\n", hr );
+
+                value = 0;
+                result = RegSetValueExW( key, ignore_mismatch, 0, REG_DWORD,
+                                         (const BYTE *)&value, sizeof( value ) );
+                ok( result == ERROR_SUCCESS, "failed to disable version override, got %ld\n", result );
+                hr = InitializeApiImpl_fun( GDKC_VERSION, GAMING_SERVICES_VERSION + 1 );
+                ok( hr == E_GAMERUNTIME_VERSION_MISMATCH, "got hr %#lx.\n", hr );
+
+                value = 1;
+                result = RegSetValueExW( key, ignore_mismatch, 0, REG_DWORD,
+                                         (const BYTE *)&value, sizeof( value ) );
+                ok( result == ERROR_SUCCESS, "failed to enable version override, got %ld\n", result );
+                hr = InitializeApiImpl_fun( GDKC_VERSION, GAMING_SERVICES_VERSION + 1 );
+                ok( hr == S_OK, "got hr %#lx.\n", hr );
+
+                result = RegDeleteValueW( key, ignore_mismatch );
+                ok( result == ERROR_SUCCESS, "failed to remove version override, got %ld\n", result );
+            }
+            RegCloseKey( key );
+            if ( disposition == REG_CREATED_NEW_KEY )
+            {
+                result = RegDeleteKeyW( HKEY_LOCAL_MACHINE, gaming_services_key );
+                ok( result == ERROR_SUCCESS, "failed to remove Gaming Services key, got %ld\n", result );
+            }
+        }
+    }
 
     QueryApiImpl_fun = (QueryApiImpl)GetProcAddress( xgameruntime, "QueryApiImpl" );
     ok( QueryApiImpl_fun != NULL, "couldn't locate function QueryApiImpl within %p! error code: %lu\n", xgameruntime, GetLastError() );
